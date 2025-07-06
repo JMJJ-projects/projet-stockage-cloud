@@ -76,7 +76,6 @@ def register():
             flash('Tous les champs sont obligatoires.', 'error')
             return render_template('register.html')
         
-        # Hash the password before storing
         hashed_password = generate_password_hash(password)
         
         try:
@@ -110,13 +109,11 @@ def login():
             return render_template('login.html')
         
         try:
-            # First, get the user by username only
             user = db.execute(
                 "SELECT * FROM users WHERE username = ?",
                 (username,)
             ).fetchone()
             
-            # Then verify the password
             if user and check_password_hash(user['password'], password):
                 session['user_id'] = user['id']
                 session['username'] = user['username']
@@ -150,29 +147,24 @@ def dashboard():
         try:
             file = request.files['file']
             if file and file.filename:
-                # Check file type
                 if not is_allowed_file(file.filename):
                     flash('Type de fichier non autorisé.', 'error')
                     return redirect(url_for('dashboard'))
                 
-                # Generate unique filename and sanitize original name
                 unique_filename, safe_original_name = generate_unique_filename(file.filename)
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
                 
                 try:
                     file.save(filepath)
                     
-                    # Calculate file hash
                     file_hash = get_file_hash(filepath)
                     
-                    # Get file size
                     file_size = os.path.getsize(filepath)
                     
                 except Exception as e:
                     flash('Erreur lors de l\'enregistrement du fichier.', 'error')
                     return redirect(url_for('dashboard'))
                 
-                # Add file
                 try:
                     donnee = db.execute(
                         "INSERT INTO files (user_id, filename, original_filename, file_hash, file_size, upload_date, delete_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -257,7 +249,6 @@ def download(file_id):
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file['filename'])
         if os.path.exists(filepath):
             try:
-                # Verify file integrity
                 current_hash = get_file_hash(filepath)
                 if current_hash != file['file_hash']:
                     flash('Erreur: Le fichier a été corrompu.', 'error')
@@ -269,7 +260,6 @@ def download(file_id):
                 )
                 db.commit()
 
-                # Serve file with original filename
                 return send_from_directory(
                     app.config['UPLOAD_FOLDER'], 
                     file['filename'], 
