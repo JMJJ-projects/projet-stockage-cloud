@@ -28,6 +28,11 @@
                     Historique
                 </a>
 
+                <a href="{{ url_for('manage_shares') }}" class="btn-shares">
+                    <i class="fas fa-share-alt"></i>
+                    Liens de partage
+                </a>
+
                 <a href="{{ url_for('logout') }}" class="btn-logout">
                     <i class="fas fa-sign-out-alt"></i>
                     Déconnexion
@@ -62,8 +67,14 @@
                 </div>
             </section>
 
-   
             
+            <div class="quota-container">
+                <h3>Espace utilisé</h3>
+                <div class="quota-bar-wrapper">
+                    <div class="quota-bar" style="width: {{ (used_space / max_quota * 100) | round(1) }}%;"></div>
+                </div>
+                <p>{{ (used_space / (1024*1024)) | round(1) }} Mo utilisés sur 500 Mo</p>
+            </div>
 
             <!-- Files Section -->
             <section class="files-section">
@@ -110,6 +121,9 @@
                             <a href="{{ url_for('download', file_id=file.id) }}" class="btn-download" title="Télécharger">
                                 <i class="fas fa-download"></i>
                             </a>
+                            <button class="btn-share" title="Partager" onclick="shareFile({{ file.id }})">
+                                <i class="fas fa-share-alt"></i>
+                            </button>
                             <form action="{{ url_for('delete', file_id=file.id) }}" method="post" class="delete-form">
                                 <button type="submit" class="btn-delete" title="Supprimer">
                                     <i class="fas fa-trash"></i>

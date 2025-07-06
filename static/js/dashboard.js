@@ -8,6 +8,7 @@ function initializeDashboard() {
     setupUploadForm();
     setupDeleteButtons();
     setupMessageHandling();
+    setupShareButtons();
 }
 
 // File input enhancement with drag and drop
@@ -294,39 +295,46 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// History
-/*function formatAction(action) {
-    const icons = {
-        'upload': 'Téléversement',
-        'download': 'Téléchargement',
-        'delete': 'Suppression',
-        'restore': 'Restauration',
-        'permanent_delete': 'Suppression définitive'
-    };
-    return icons[action] || action;
+// History functionality is now handled server-side in the history route
+
+// File sharing functionality
+function setupShareButtons() {
+    // This will be called for dynamically created share buttons
 }
-*/
 
-fetch('/history')
-    .then(response => {
-        if (!response.ok) throw new Error("Non autorisé ou erreur serveur");
-        return response.json();
+function shareFile(fileId) {
+    // Show loading state
+    const shareButton = event.target.closest('.btn-share');
+    const originalHTML = shareButton.innerHTML;
+    shareButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    shareButton.disabled = true;
+
+    fetch(`/share/${fileId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
     })
+    .then(response => response.json())
     .then(data => {
-        const tbody = document.querySelector('#historyTable tbody');
-        data.forEach(entry => {
-            const row = document.createElement('tr');
-
-            row.innerHTML = `
-                <td>${entry.timestamp}</td>
-                <td>${entry.action}</td>
-                <td>${entry.original_filename || 'N/A'}</td>
-            `;
-            tbody.appendChild(row);
-        });
+        if (data.success) {
+            // Copy link to clipboard
+            navigator.clipboard.writeText(data.share_url).then(() => {
+                showMessage('Lien de partage copié dans le presse-papiers !', 'success');
+            }).catch(() => {
+                // Fallback: show the link in an alert
+                prompt('Lien de partage créé. Copiez ce lien:', data.share_url);
+            });
+        } else {
+            showMessage(data.message || 'Erreur lors de la création du lien de partage.', 'error');
+        }
     })
-    .catch(err => {
-        const msg = document.getElementById('errorMessage');
-        msg.textContent = err.message;
-        msg.classList.remove('d-none');
+    .catch(error => {
+        showMessage('Erreur réseau lors de la création du lien de partage.', 'error');
+    })
+    .finally(() => {
+        // Restore button state
+        shareButton.innerHTML = originalHTML;
+        shareButton.disabled = false;
     });
+}
