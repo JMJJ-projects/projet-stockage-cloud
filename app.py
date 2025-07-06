@@ -12,22 +12,20 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'dev'
 app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
-MAX_QUOTA_BYTES = 500 * 1024 * 1024
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 app.teardown_appcontext(close_db)
 app.cli.add_command(init_db_command)
 
-# --- File Security Functions ---
 def generate_unique_filename(original_filename):
     """Generate a unique filename using UUID and preserve original extension."""
     safe_filename = secure_filename(original_filename)
-
+    
     _, file_extension = os.path.splitext(safe_filename)
-
+    
     unique_id = str(uuid.uuid4())
-
+    
     unique_filename = f"{unique_id}{file_extension}"
     
     return unique_filename, safe_filename
@@ -78,6 +76,7 @@ def register():
             flash('Tous les champs sont obligatoires.', 'error')
             return render_template('register.html')
         
+        # Hash the password before storing
         hashed_password = generate_password_hash(password)
         
         try:
@@ -111,11 +110,13 @@ def login():
             return render_template('login.html')
         
         try:
+            # First, get the user by username only
             user = db.execute(
                 "SELECT * FROM users WHERE username = ?",
                 (username,)
             ).fetchone()
             
+            # Then verify the password
             if user and check_password_hash(user['password'], password):
                 session['user_id'] = user['id']
                 session['username'] = user['username']
@@ -145,43 +146,42 @@ def dashboard():
     db = get_db()
     user_id = session['user_id']
 
-
-    #calcule de l'espace utilisé
-    result = db.execute("SELECT SUM(file_size) AS total FROM files WHERE user_id = ? AND delete_data = 'NULL'",(user_id,)).fetchone()
-    used_space = result["total"] if result["total"] else 0
-
-
     if request.method == 'POST':
         try:
             file = request.files['file']
             if file and file.filename:
-                file.seek(0, os.SEEK_END)
-                file_size_new = file.tell()
-                file.seek(0)
-
-                if used_space + file_size_new > MAX_QUOTA_BYTES:
-                    flash(f"Quota dépassé : vous avez utilisé {round(used_space / (1024*1024),1)} Mo sur 500 Mo. Veuillez supprimer des fichiers avant de téléverser.", "error")
-                    return redirect(url_for('dashboard'))
+                # Check file type
                 if not is_allowed_file(file.filename):
                     flash('Type de fichier non autorisé.', 'error')
                     return redirect(url_for('dashboard'))
                 
+                # Generate unique filename and sanitize original name
                 unique_filename, safe_original_name = generate_unique_filename(file.filename)
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
                 
                 try:
                     file.save(filepath)
+                    
+                    # Calculate file hash
                     file_hash = get_file_hash(filepath)
+                    
+                    # Get file size
                     file_size = os.path.getsize(filepath)
                     
                 except Exception as e:
                     flash('Erreur lors de l\'enregistrement du fichier.', 'error')
                     return redirect(url_for('dashboard'))
                 
+                # Add file
                 try:
-                    db.execute(
+                    donnee = db.execute(
                         "INSERT INTO files (user_id, filename, original_filename, file_hash, file_size, upload_date, delete_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
                         (user_id, unique_filename, safe_original_name, file_hash, file_size, datetime.now().isoformat(), 'NULL')
+                    )
+                    file_id = donnee.lastrowid
+                    db.execute(
+                        "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
+                        (user_id, file_id, 'Téléverser', datetime.now().isoformat())
                     )
                     db.commit()
                     flash('Fichier téléversé avec succès!', 'success')
@@ -196,12 +196,12 @@ def dashboard():
 
 
     try:
-        # Calculer la date limite (30 secondes avant maintenant)
-        cutoff_date = datetime.now() - timedelta(seconds=30)
+        # Calculer la date limite (7 jours avant maintenant)
+        cutoff_date = datetime.now() - timedelta(days=7)
         
         # Récupérer les fichiers à supprimer
         old_files = db.execute(
-            "SELECT * FROM files WHERE delete_date != 'NULL' AND delete_date < ?",
+            "SELECT * FROM files WHERE delete_date IS NOT NULL AND delete_date < ?",
             (cutoff_date.isoformat(),)
         ).fetchall()
         
@@ -235,7 +235,7 @@ def dashboard():
     except Exception as e:
         flash('Erreur lors de la récupération des fichiers.', 'error')
         files = []
-    return render_template('dashboard.html', files=files, username=session['username'], used_space=used_space, max_quota=MAX_QUOTA_BYTES)
+    return render_template('dashboard.html', files=files, username=session['username'])
 
 # --- Download File ---
 @app.route('/download/<int:file_id>')
@@ -257,11 +257,19 @@ def download(file_id):
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file['filename'])
         if os.path.exists(filepath):
             try:
+                # Verify file integrity
                 current_hash = get_file_hash(filepath)
                 if current_hash != file['file_hash']:
                     flash('Erreur: Le fichier a été corrompu.', 'error')
                     return redirect(url_for('dashboard'))
                 
+                db.execute(
+                    "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
+                    (session['user_id'], file['id'], 'Télécharger', datetime.now().isoformat())
+                )
+                db.commit()
+
+                # Serve file with original filename
                 return send_from_directory(
                     app.config['UPLOAD_FOLDER'], 
                     file['filename'], 
@@ -297,8 +305,12 @@ def delete(file_id):
     if file:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file['filename'])
         try:
-            db.execute("UPDATE files SET delete_date = ? WHERE id = ? AND user_id = ?", (datetime.now().isoformat(), file_id, session['user_id']))
-
+            donnee = db.execute("UPDATE files SET delete_date = ? WHERE id = ? AND user_id = ?", (datetime.now().isoformat(), file_id, session['user_id']))
+            file_id = donnee.lastrowid
+            db.execute(
+                "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
+                (session['user_id'], file['id'], 'Supprimer', datetime.now().isoformat())
+            )
             db.commit()
             flash('Fichier supprimé avec succès.', 'success')
         except Exception as e:
@@ -352,10 +364,18 @@ def restore(file_id):
                 "UPDATE files SET delete_date = 'NULL' WHERE id = ?",
                 (file_id,)
             )
+            db.execute(
+                "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
+                (session['user_id'], file_id, 'Restorer', datetime.now().isoformat())
+            )
             db.commit()
             flash('Fichier restauré avec succès.', 'success')
         else:
             flash('Fichier introuvable ou non autorisé.', 'error')
+        db.execute(
+            "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
+            (session['user_id'], file['id'], 'restore', datetime.now().isoformat())
+        )
     except Exception as e:
         flash('Erreur lors de la restauration du fichier.', 'error')
     
@@ -376,6 +396,11 @@ def permanent_delete(file_id):
         ).fetchone()
         
         if file:
+            db.execute(
+                "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
+                (session['user_id'], file['id'], 'Supprimer définitivement', datetime.now().isoformat())
+            )
+
             # Supprimer physiquement le fichier
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], file['filename'])
             if os.path.exists(filepath):
@@ -391,6 +416,26 @@ def permanent_delete(file_id):
         flash('Erreur lors de la suppression définitive.', 'error')
     
     return redirect(url_for('trash'))
+
+# --- Historique ---
+@app.route('/history')
+def history():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    logs = db.execute(
+        """
+        SELECT h.timestamp, h.action, f.original_filename
+        FROM history h
+        LEFT JOIN files f ON h.file_id = f.id
+        WHERE h.user_id = ?
+        ORDER BY h.timestamp DESC
+        """,
+        (session['user_id'],)
+    ).fetchall()
+
+    return render_template('history.html', logs=logs, username=session['username'])
 
 # --- Run App ---
 if __name__ == '__main__':
