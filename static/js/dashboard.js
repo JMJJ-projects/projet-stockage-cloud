@@ -11,14 +11,12 @@ function initializeDashboard() {
     setupShareButtons();
 }
 
-// File input enhancement with drag and drop
 function setupFileInput() {
     const fileInput = document.getElementById('fileInput');
     const fileLabel = document.querySelector('.file-input-label');
     
     if (!fileInput || !fileLabel) return;
 
-    // Update label when file is selected
     fileInput.addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (file) {
@@ -26,7 +24,6 @@ function setupFileInput() {
         }
     });
 
-    // Drag and drop functionality
     fileLabel.addEventListener('dragover', function(e) {
         e.preventDefault();
         fileLabel.style.borderColor = '#1a73e8';
@@ -65,7 +62,6 @@ function updateFileLabel(fileName) {
     }
 }
 
-// Enhanced upload form handling
 function setupUploadForm() {
     const uploadForm = document.querySelector('.upload-form');
     if (!uploadForm) return;
@@ -81,7 +77,6 @@ function setupUploadForm() {
             return;
         }
 
-        // Show loading state
         const originalText = uploadButton.innerHTML;
         uploadButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Téléversement...';
         uploadButton.disabled = true;
@@ -103,7 +98,6 @@ function setupUploadForm() {
             
             if (response.ok) {
                 showMessage("Fichier téléversé avec succès !", "success");
-                // Reset form
                 uploadForm.reset();
                 updateFileLabel('Choisir un fichier');
                 setTimeout(() => window.location.reload(), 1500);
@@ -113,14 +107,12 @@ function setupUploadForm() {
         } catch (error) {
             showMessage("Erreur réseau lors du téléversement.", "error");
         } finally {
-            // Restore button state
             uploadButton.innerHTML = originalText;
             uploadButton.disabled = false;
         }
     });
 }
 
-// Enhanced delete functionality
 function setupDeleteButtons() {
     document.querySelectorAll('.delete-form').forEach(form => {
         form.addEventListener('submit', async function(e) {
@@ -133,7 +125,6 @@ function setupDeleteButtons() {
             const deleteButton = form.querySelector('.btn-delete');
             const originalHTML = deleteButton.innerHTML;
             
-            // Show loading state
             deleteButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             deleteButton.disabled = true;
 
@@ -151,7 +142,6 @@ function setupDeleteButtons() {
                 
                 if (response.ok) {
                     showMessage("Fichier supprimé avec succès.", "success");
-                    // Animate card removal
                     const fileCard = form.closest('.file-card');
                     if (fileCard) {
                         fileCard.style.transform = 'scale(0.8)';
@@ -169,7 +159,6 @@ function setupDeleteButtons() {
             } catch (error) {
                 showMessage("Erreur réseau lors de la suppression.", "error");
             } finally {
-                // Restore button state
                 deleteButton.innerHTML = originalHTML;
                 deleteButton.disabled = false;
             }
@@ -177,7 +166,6 @@ function setupDeleteButtons() {
     });
 }
 
-// Update file count display
 function updateFileCount() {
     const fileCards = document.querySelectorAll('.file-card');
     const fileCountElement = document.querySelector('.file-count');
@@ -186,7 +174,6 @@ function updateFileCount() {
         const count = fileCards.length;
         fileCountElement.textContent = `${count} fichier${count > 1 ? 's' : ''}`;
         
-        // Show empty state if no files
         if (count === 0) {
             const filesSection = document.querySelector('.files-section');
             const filesGrid = document.querySelector('.files-grid');
@@ -204,9 +191,7 @@ function updateFileCount() {
     }
 }
 
-// Enhanced message handling
 function setupMessageHandling() {
-    // Auto-hide messages after 5 seconds
     const messages = document.querySelectorAll('.message');
     messages.forEach(message => {
         setTimeout(() => {
@@ -217,16 +202,12 @@ function setupMessageHandling() {
     });
 }
 
-// Enhanced message display function
 function showMessage(msg, type = 'info') {
     const messageContainer = document.getElementById('dashboard-message');
     if (!messageContainer) return;
-
-    // Remove existing messages
     const existingMessages = messageContainer.querySelectorAll('.message');
     existingMessages.forEach(msg => msg.remove());
 
-    // Create new message
     const messageDiv = document.createElement('div');
     messageDiv.className = `message message-${type}`;
     
@@ -240,7 +221,6 @@ function showMessage(msg, type = 'info') {
 
     messageContainer.appendChild(messageDiv);
 
-    // Auto-hide after 5 seconds
     setTimeout(() => {
         messageDiv.style.transform = 'translateX(100%)';
         messageDiv.style.opacity = '0';
@@ -248,7 +228,6 @@ function showMessage(msg, type = 'info') {
     }, 5000);
 }
 
-// Add smooth scrolling for better UX
 function smoothScrollTo(element) {
     element.scrollIntoView({
         behavior: 'smooth',
@@ -256,9 +235,7 @@ function smoothScrollTo(element) {
     });
 }
 
-// Add keyboard shortcuts
 document.addEventListener('keydown', function(e) {
-    // Ctrl/Cmd + U to focus file input
     if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
         e.preventDefault();
         const fileInput = document.getElementById('fileInput');
@@ -266,8 +243,6 @@ document.addEventListener('keydown', function(e) {
             fileInput.click();
         }
     }
-    
-    // Escape to close messages
     if (e.key === 'Escape') {
         const messages = document.querySelectorAll('.message');
         messages.forEach(message => {
@@ -278,8 +253,7 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// Add file size validation
-function validateFileSize(file, maxSize = 50 * 1024 * 1024) { // 50MB default
+function validateFileSize(file, maxSize = 50 * 1024 * 1024) {
     if (file.size > maxSize) {
         showMessage(`Le fichier est trop volumineux. Taille maximale: ${formatFileSize(maxSize)}`, "error");
         return false;
@@ -295,15 +269,11 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// History functionality is now handled server-side in the history route
 
-// File sharing functionality
 function setupShareButtons() {
-    // This will be called for dynamically created share buttons
 }
 
 function shareFile(fileId) {
-    // Show loading state
     const shareButton = event.target.closest('.btn-share');
     const originalHTML = shareButton.innerHTML;
     shareButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -318,11 +288,9 @@ function shareFile(fileId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Copy link to clipboard
             navigator.clipboard.writeText(data.share_url).then(() => {
                 showMessage('Lien de partage copié dans le presse-papiers !', 'success');
             }).catch(() => {
-                // Fallback: show the link in an alert
                 prompt('Lien de partage créé. Copiez ce lien:', data.share_url);
             });
         } else {
@@ -333,7 +301,6 @@ function shareFile(fileId) {
         showMessage('Erreur réseau lors de la création du lien de partage.', 'error');
     })
     .finally(() => {
-        // Restore button state
         shareButton.innerHTML = originalHTML;
         shareButton.disabled = false;
     });
