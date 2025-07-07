@@ -1,4 +1,3 @@
-/* Reset et styles de base */
 * {
     margin: 0;
     padding: 0;
@@ -45,7 +44,6 @@ input:focus {
     outline: none;
 }
 
-/* Use styles.css button and color scheme for all buttons */
 .btn, button {
     padding: 0.8rem 1.5rem;
     border-radius: 5px;
