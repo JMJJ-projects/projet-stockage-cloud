@@ -10,12 +10,11 @@ import secrets
 
 # --- Flask App Setup ---
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dev'  # Change for production!
+app.config['SECRET_KEY'] = 'dev'
 app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 MAX_QUOTA_BYTES = 500 * 1024 * 1024 #500 Mo
 
-# Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # --- Register DB helpers ---
@@ -25,16 +24,12 @@ app.cli.add_command(init_db_command)
 # --- File Security Functions ---
 def generate_unique_filename(original_filename):
     """Generate a unique filename using UUID and preserve original extension."""
-    # Sanitize the original filename
     safe_filename = secure_filename(original_filename)
     
-    # Get file extension
     _, file_extension = os.path.splitext(safe_filename)
     
-    # Generate unique identifier
     unique_id = str(uuid.uuid4())
     
-    # Combine unique ID with original extension
     unique_filename = f"{unique_id}{file_extension}"
     
     return unique_filename, safe_filename
@@ -85,7 +80,6 @@ def register():
             flash('Tous les champs sont obligatoires.', 'error')
             return render_template('register.html')
         
-        # Hash the password before storing
         hashed_password = generate_password_hash(password)
         
         try:
@@ -119,13 +113,11 @@ def login():
             return render_template('login.html')
         
         try:
-            # First, get the user by username only
             user = db.execute(
                 "SELECT * FROM users WHERE username = ?",
                 (username,)
             ).fetchone()
             
-            # Then verify the password
             if user and check_password_hash(user['password'], password):
                 session['user_id'] = user['id']
                 session['username'] = user['username']
@@ -155,7 +147,6 @@ def dashboard():
     db = get_db()
     user_id = session['user_id']
 
-    #calcule de l'espace utilisé
     result = db.execute("SELECT SUM(file_size) AS total FROM files WHERE user_id = ? AND delete_date = 'NULL'",(user_id,)).fetchone()
     used_space = result["total"] if result["total"] else 0
 
@@ -163,7 +154,6 @@ def dashboard():
         try:
             file = request.files['file']
             if file and file.filename:
-                #check quota
                 file.seek(0, os.SEEK_END)
                 file_size_new = file.tell()
                 file.seek(0)
@@ -171,20 +161,16 @@ def dashboard():
                 if used_space + file_size_new > MAX_QUOTA_BYTES:
                     flash(f"Quota dépassé : vous avez utilisé {round(used_space / (1024*1024),1)} Mo sur 500 Mo. Veuillez supprimer des fichiers avant de téléverser.", "error")
                     return redirect(url_for('dashboard'))
-                # Check file type
                 if not is_allowed_file(file.filename):
                     flash('Type de fichier non autorisé.', 'error')
                     return redirect(url_for('dashboard'))
                 
-                # Generate unique filename and sanitize original name
                 unique_filename, safe_original_name = generate_unique_filename(file.filename)
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
                 
                 try:
                     file.save(filepath)
-                    # Calculate file hash
                     file_hash = get_file_hash(filepath)
-                    # Get file size
                     file_size = os.path.getsize(filepath)
                 except Exception as e:
                     flash('Erreur lors de l\'enregistrement du fichier.', 'error')
@@ -196,7 +182,6 @@ def dashboard():
                     )
                     db.commit()
                     file_id = cursor.lastrowid
-                    # Log upload in history
                     db.execute(
                         "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
                         (user_id, file_id, 'upload', datetime.now().isoformat())
@@ -213,16 +198,13 @@ def dashboard():
             flash('Erreur inattendue lors du téléversement.', 'error')
 
     try:
-        # Calculer la date limite (30 secondes avant maintenant)
         cutoff_date = datetime.now() - timedelta(seconds=30)
         
-        # Récupérer les fichiers à supprimer
         old_files = db.execute(
             "SELECT * FROM files WHERE delete_date != 'NULL' AND delete_date < ?",
             (cutoff_date.isoformat(),)
         ).fetchall()
         
-        # Supprimer chaque fichier
         for file in old_files:
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], file['filename'])
             if os.path.exists(filepath):
@@ -232,7 +214,6 @@ def dashboard():
                     app.logger.error(f"Erreur suppression fichier {filepath}: {e}")
                     continue
             
-            # Supprimer l'entrée en base
             db.execute("DELETE FROM files WHERE id = ?", (file['id'],))
         
         db.commit()
@@ -271,18 +252,15 @@ def download(file_id):
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file['filename'])
         if os.path.exists(filepath):
             try:
-                # Verify file integrity
                 current_hash = get_file_hash(filepath)
                 if current_hash != file['file_hash']:
                     flash('Erreur: Le fichier a été corrompu.', 'error')
                     return redirect(url_for('dashboard'))
-                # Log download in history
                 db.execute(
                     "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
                     (session['user_id'], file_id, 'download', datetime.now().isoformat())
                 )
                 db.commit()
-                # Serve file with original filename
                 return send_from_directory(
                     app.config['UPLOAD_FOLDER'], 
                     file['filename'], 
@@ -320,7 +298,6 @@ def delete(file_id):
         try:
             db.execute("UPDATE files SET delete_date = ? WHERE id = ? AND user_id = ?", (datetime.now().isoformat(), file_id, session['user_id']))
             db.commit()
-            # Log delete in history
             db.execute(
                 "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
                 (session['user_id'], file_id, 'delete', datetime.now().isoformat())
@@ -379,7 +356,6 @@ def restore(file_id):
                 (file_id,)
             )
             db.commit()
-            # Log restore in history
             db.execute(
                 "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
                 (session['user_id'], file_id, 'restore', datetime.now().isoformat())
@@ -437,7 +413,6 @@ def history():
 
     db = get_db()
     try:
-        # Get user's activity history
         history_entries = db.execute("""
             SELECT h.*, f.original_filename 
             FROM history h 
@@ -484,7 +459,6 @@ def share_file(file_id):
     
     db = get_db()
     try:
-        # Verify file belongs to user
         file = db.execute(
             "SELECT * FROM files WHERE id = ? AND user_id = ? AND delete_date = 'NULL'",
             (file_id, session['user_id'])
@@ -494,16 +468,13 @@ def share_file(file_id):
             flash('Fichier introuvable ou non autorisé.', 'error')
             return redirect(url_for('dashboard'))
         
-        # Check if share link already exists
         existing_share = db.execute(
             "SELECT * FROM share_links WHERE file_id = ? AND is_active = 1",
             (file_id,)
         ).fetchone()
         
         if existing_share:
-            # Return existing share link
             share_url = request.host_url.rstrip('/') + url_for('shared_file', token=existing_share['share_token'])
-            # Log share in history
             db.execute(
                 "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
                 (session['user_id'], file_id, 'share', datetime.now().isoformat())
@@ -515,10 +486,8 @@ def share_file(file_id):
                 'message': 'Lien de partage existant récupéré.'
             })
         
-        # Create new share link
         share_token = create_share_link(file_id, session['user_id'])
         share_url = request.host_url.rstrip('/') + url_for('shared_file', token=share_token)
-        # Log share in history
         db.execute(
             "INSERT INTO history (user_id, file_id, action, timestamp) VALUES (?, ?, ?, ?)",
             (session['user_id'], file_id, 'share', datetime.now().isoformat())
@@ -539,7 +508,6 @@ def share_file(file_id):
 def shared_file(token):
     db = get_db()
     try:
-        # Get share link details
         share_link = db.execute(
             "SELECT * FROM share_links WHERE share_token = ? AND is_active = 1",
             (token,)
@@ -549,14 +517,12 @@ def shared_file(token):
             flash('Lien de partage invalide ou expiré.', 'error')
             return redirect(url_for('mainpage'))
         
-        # Check if link is expired
         if share_link['expires_at']:
             expires_at = datetime.fromisoformat(share_link['expires_at'])
             if datetime.now() > expires_at:
                 flash('Ce lien de partage a expiré.', 'error')
                 return redirect(url_for('mainpage'))
         
-        # Get file details
         file = db.execute(
             "SELECT * FROM files WHERE id = ? AND delete_date = 'NULL'",
             (share_link['file_id'],)
@@ -566,7 +532,6 @@ def shared_file(token):
             flash('Fichier introuvable ou supprimé.', 'error')
             return redirect(url_for('mainpage'))
         
-        # Increment download count
         db.execute(
             "UPDATE share_links SET download_count = download_count + 1 WHERE id = ?",
             (share_link['id'],)
@@ -584,7 +549,6 @@ def shared_file(token):
 def download_shared_file(token):
     db = get_db()
     try:
-        # Get share link details
         share_link = db.execute(
             "SELECT * FROM share_links WHERE share_token = ? AND is_active = 1",
             (token,)
@@ -594,14 +558,12 @@ def download_shared_file(token):
             flash('Lien de partage invalide ou expiré.', 'error')
             return redirect(url_for('mainpage'))
         
-        # Check if link is expired
         if share_link['expires_at']:
             expires_at = datetime.fromisoformat(share_link['expires_at'])
             if datetime.now() > expires_at:
                 flash('Ce lien de partage a expiré.', 'error')
                 return redirect(url_for('mainpage'))
         
-        # Get file details
         file = db.execute(
             "SELECT * FROM files WHERE id = ? AND delete_date = 'NULL'",
             (share_link['file_id'],)
@@ -614,13 +576,11 @@ def download_shared_file(token):
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file['filename'])
         if os.path.exists(filepath):
             try:
-                # Verify file integrity
                 current_hash = get_file_hash(filepath)
                 if current_hash != file['file_hash']:
                     flash('Erreur: Le fichier a été corrompu.', 'error')
                     return redirect(url_for('shared_file', token=token))
                 
-                # Serve file with original filename
                 return send_from_directory(
                     app.config['UPLOAD_FOLDER'], 
                     file['filename'], 
@@ -646,7 +606,6 @@ def manage_shares():
     
     db = get_db()
     try:
-        # Get all active share links created by the user
         share_links = db.execute("""
             SELECT sl.*, f.original_filename, f.file_size, f.upload_date
             FROM share_links sl
@@ -669,7 +628,6 @@ def deactivate_share(share_id):
     
     db = get_db()
     try:
-        # Verify share link belongs to user
         share_link = db.execute(
             "SELECT * FROM share_links WHERE id = ? AND created_by = ?",
             (share_id, session['user_id'])
