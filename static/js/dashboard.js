@@ -1,4 +1,3 @@
-// Enhanced dashboard functionality
 document.addEventListener('DOMContentLoaded', function() {
     initializeDashboard();
 });
